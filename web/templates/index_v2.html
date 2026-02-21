@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Irma - Virtual Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'snow': {
+                            50: '#FAFAFA',
+                            100: '#F5F5F5',
+                            200: '#F0F0F0',
+                            300: '#E8E8E8',
+                            400: '#E0E0E0',
+                        },
+                        'dark': {
+                            bg: '#1a1a1a',
+                            surface: '#242424',
+                            elevated: '#2d2d2d',
+                            border: '#3a3a3a',
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Detect system theme preference
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+    
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-10px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .message {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .chat-item {
+            animation: slideIn 0.2s ease-out;
+            transition: all 0.2s ease;
+        }
+        
+        .chat-item:hover {
+            transform: translateX(4px);
+        }
+        
+        .chat-item.active {
+            background: linear-gradient(to right, rgba(99, 102, 241, 0.1), transparent);
+            border-left: 3px solid #6366f1;
+        }
+        
+        .dark .chat-item.active {
+            background: linear-gradient(to right, rgba(99, 102, 241, 0.2), transparent);
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #d0d0d0;
+            border-radius: 3px;
+        }
+        
+        .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #404040;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #b0b0b0;
+        }
+        
+        .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #505050;
+        }
+        
+        textarea {
+            resize: none;
+            overflow-y: auto;
+        }
+        
+        .message-user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .message-assistant {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .dark .message-assistant {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="h-full overflow-hidden bg-snow-50 dark:bg-dark-bg transition-colors duration-300">
+    
+    <div class="flex h-full">
+        <!-- Left Sidebar - Chat List -->
+        <div class="w-64 bg-white dark:bg-dark-surface border-r border-snow-200 dark:border-dark-border flex flex-col transition-colors duration-300">
+            <!-- Sidebar Header -->
+            <div class="p-4 border-b border-snow-200 dark:border-dark-border">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Chats</h2>
+                    <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-snow-100 dark:hover:bg-dark-elevated transition-colors" title="Toggle Theme">
+                        <i class="fas fa-moon dark:hidden text-gray-600"></i>
+                        <i class="fas fa-sun hidden dark:inline text-gray-300"></i>
+                    </button>
+                </div>
+                <button onclick="createNewChat()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-2 font-medium">
+                    <i class="fas fa-plus"></i>
+                    <span>New Chat</span>
+                </button>
+            </div>
+            
+            <!-- Chat List -->
+            <div class="flex-1 overflow-y-auto scrollbar-thin">
+                <div id="chatList" class="p-2 space-y-1">
+                    <!-- Voice Chat (Permanent) -->
+                    <div class="chat-item active p-3 rounded-lg cursor-pointer" data-chat-id="voice-realtime" data-chat-type="voice" onclick="switchChat('voice-realtime')">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                                <i class="fas fa-microphone text-white text-sm"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center space-x-2">
+                                    <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">Voice Chat</p>
+                                    <i class="fas fa-lock text-xs text-gray-400" title="Cannot be deleted"></i>
+                                </div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">Real-time conversation</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sidebar Footer -->
+            <div class="p-4 border-t border-snow-200 dark:border-dark-border">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <i class="fas fa-robot text-white text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100">Irma Assistant</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">v2.0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col">
+            <!-- Header -->
+            <header class="bg-white dark:bg-dark-surface border-b border-snow-200 dark:border-dark-border px-6 py-4 transition-colors duration-300">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div id="currentChatIcon" class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-md">
+                            <i class="fas fa-microphone text-white text-lg"></i>
+                        </div>
+                        <div>
+                            <h1 id="currentChatTitle" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Voice Chat</h1>
+                            <p id="currentChatSubtitle" class="text-sm text-gray-500 dark:text-gray-400">Real-time conversation</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center space-x-3">
+                        <div class="flex items-center space-x-2 bg-snow-100 dark:bg-dark-elevated rounded-lg px-3 py-1.5">
+                            <button onclick="setLanguageMode('gen-z')" id="genZBtn" class="px-3 py-1 rounded-md bg-indigo-600 text-white text-sm font-medium transition-colors">
+                                Gen-Z
+                            </button>
+                            <button onclick="setLanguageMode('formal')" id="formalBtn" class="px-3 py-1 rounded-md text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-bg text-sm font-medium transition-colors">
+                                Formal
+                            </button>
+                        </div>
+                        
+                        <button onclick="showHistory()" class="p-2 rounded-lg hover:bg-snow-100 dark:hover:bg-dark-elevated transition-colors" title="Conversation History">
+                            <i class="fas fa-history text-gray-600 dark:text-gray-300"></i>
+                        </button>
+                        
+                        <button onclick="deleteCurrentChat()" id="deleteChatBtn" class="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors hidden" title="Delete Chat">
+                            <i class="fas fa-trash text-red-600 dark:text-red-400"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-snow-50 dark:bg-dark-bg scrollbar-thin" id="chatMessages">
+                <!-- Welcome Message -->
+                <div class="flex justify-center py-12">
+                    <div class="text-center max-w-md">
+                        <div class="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                            <i class="fas fa-robot text-white text-4xl"></i>
+                        </div>
+                        <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-3">Halo! Saya Irma</h2>
+                        <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Virtual assistant kamu yang siap membantu kapan saja. Ketik atau bicara untuk memulai percakapan!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="border-t border-snow-200 dark:border-dark-border bg-white dark:bg-dark-surface px-6 py-4 transition-colors duration-300">
+                <!-- Quick Actions -->
+                <div class="mb-3 flex flex-wrap gap-2">
+                    <button onclick="quickAction('Halo Irma')" class="px-3 py-1.5 bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border text-gray-700 dark:text-gray-200 text-sm rounded-full transition-all hover:shadow-sm">
+                        <i class="fas fa-hand-wave mr-1.5"></i> Sapa Irma
+                    </button>
+                    <button onclick="quickAction('Jam berapa sekarang?')" class="px-3 py-1.5 bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border text-gray-700 dark:text-gray-200 text-sm rounded-full transition-all hover:shadow-sm">
+                        <i class="fas fa-clock mr-1.5"></i> Jam
+                    </button>
+                    <button onclick="quickAction('Buatkan file Python')" class="px-3 py-1.5 bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border text-gray-700 dark:text-gray-200 text-sm rounded-full transition-all hover:shadow-sm">
+                        <i class="fas fa-file-code mr-1.5"></i> Generate File
+                    </button>
+                    <button onclick="quickAction('Buka YouTube')" class="px-3 py-1.5 bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border text-gray-700 dark:text-gray-200 text-sm rounded-full transition-all hover:shadow-sm">
+                        <i class="fas fa-globe mr-1.5"></i> Browse
+                    </button>
+                </div>
+                
+                <!-- Image Preview -->
+                <div id="imagePreview" class="hidden mb-3 relative inline-block">
+                    <img id="previewImg" src="" alt="Preview" class="max-h-32 rounded-lg border-2 border-snow-200 dark:border-dark-border shadow-sm">
+                    <button onclick="clearImage()" class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full hover:bg-red-600 transition-colors shadow-md">
+                        <i class="fas fa-times text-xs"></i>
+                    </button>
+                </div>
+                
+                <!-- Input Box -->
+                <div class="flex items-end space-x-3">
+                    <button onclick="document.getElementById('imageInput').click()" class="p-3 rounded-full bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border transition-colors" title="Upload Image">
+                        <i class="fas fa-image text-gray-600 dark:text-gray-300"></i>
+                    </button>
+                    <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="handleImageSelect(event)">
+                    
+                    <div class="flex-1 relative">
+                        <textarea 
+                            id="userInput" 
+                            rows="1" 
+                            placeholder="Ketik pesan disini..." 
+                            class="w-full px-4 py-3 border-2 border-snow-200 dark:border-dark-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-dark-elevated text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-colors"
+                            onkeydown="handleKeyPress(event)"
+                            oninput="autoResize(this)"
+                        ></textarea>
+                    </div>
+                    
+                    <button onclick="toggleVoice()" id="voiceBtn" class="p-3 rounded-full bg-snow-100 dark:bg-dark-elevated hover:bg-snow-200 dark:hover:bg-dark-border transition-colors" title="Voice Input">
+                        <i class="fas fa-microphone text-gray-600 dark:text-gray-300"></i>
+                    </button>
+                    
+                    <button onclick="sendMessage()" class="p-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md hover:shadow-lg" title="Send">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Sidebar - System Info -->
+        <div class="w-72 bg-white dark:bg-dark-surface border-l border-snow-200 dark:border-dark-border flex flex-col transition-colors duration-300">
+            <div class="p-4 border-b border-snow-200 dark:border-dark-border">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">System Monitor</h3>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
+                <!-- CPU Usage -->
+                <div class="bg-gradient-to-br from-snow-50 to-snow-100 dark:from-dark-elevated dark:to-dark-border p-4 rounded-xl shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200">CPU Usage</span>
+                        <span id="cpuUsage" class="text-sm font-bold text-indigo-600 dark:text-indigo-400">0%</span>
+                    </div>
+                    <div class="w-full bg-snow-200 dark:bg-dark-bg rounded-full h-2.5 overflow-hidden">
+                        <div id="cpuBar" class="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Memory Usage -->
+                <div class="bg-gradient-to-br from-snow-50 to-snow-100 dark:from-dark-elevated dark:to-dark-border p-4 rounded-xl shadow-sm">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Memory Usage</span>
+                        <span id="memoryUsage" class="text-sm font-bold text-purple-600 dark:text-purple-400">0%</span>
+                    </div>
+                    <div class="w-full bg-snow-200 dark:bg-dark-bg rounded-full h-2.5 overflow-hidden">
+                        <div id="memoryBar" class="bg-gradient-to-r from-purple-500 to-purple-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="bg-gradient-to-br from-snow-50 to-snow-100 dark:from-dark-elevated dark:to-dark-border p-4 rounded-xl shadow-sm space-y-3">
+                    <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Statistics</h4>
+                    
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-xs text-gray-600 dark:text-gray-400">Total Messages</span>
+                        <span id="totalMessages" class="text-sm font-bold text-gray-800 dark:text-gray-100">0</span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-xs text-gray-600 dark:text-gray-400">Session Time</span>
+                        <span id="sessionTime" class="text-sm font-bold text-gray-800 dark:text-gray-100">0:00</span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-xs text-gray-600 dark:text-gray-400">Language Mode</span>
+                        <span id="currentMode" class="text-sm font-bold text-indigo-600 dark:text-indigo-400">Gen-Z</span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-xs text-gray-600 dark:text-gray-400">Active Chat</span>
+                        <span id="activeChatType" class="text-sm font-bold text-green-600 dark:text-green-400">Voice</span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-xs text-gray-600 dark:text-gray-400">Total Chats</span>
+                        <span id="totalChats" class="text-sm font-bold text-gray-800 dark:text-gray-100">1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chat Management
+        let chats = {
+            'voice-realtime': {
+                id: 'voice-realtime',
+                type: 'voice',
+                title: 'Voice Chat',
+                subtitle: 'Real-time conversation',
+                messages: [],
+                permanent: true
+            }
+        };
+        
+        let currentChatId = 'voice-realtime';
+        let chatCounter = 1;
+        let messageCounter = 0;
+        let sessionStart = Date.now();
+        let languageMode = 'gen-z';
+        let uploadedImage = null;
+        
+        // Theme Management
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                html.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+        
+        // Chat Management Functions
+        function createNewChat() {
+            chatCounter++;
+            const chatId = `text-chat-${chatCounter}`;
+            const chatTitle = `Chat ${chatCounter}`;
+            
+            chats[chatId] = {
+                id: chatId,
+                type: 'text',
+                title: chatTitle,
+                subtitle: 'Text conversation',
+                messages: [],
+                permanent: false
+            };
+            
+            addChatToList(chatId, chatTitle);
+            switchChat(chatId);
+            updateStats();
+        }
+        
+        function addChatToList(chatId, chatTitle) {
+            const chatList = document.getElementById('chatList');
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item p-3 rounded-lg cursor-pointer';
+            chatItem.setAttribute('data-chat-id', chatId);
+            chatItem.setAttribute('data-chat-type', 'text');
+            chatItem.onclick = () => switchChat(chatId);
+            
+            chatItem.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+                        <i class="fas fa-comment text-white text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">${chatTitle}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Text conversation</p>
+                    </div>
+                </div>
+            `;
+            
+            chatList.appendChild(chatItem);
+        }
+        
+        function switchChat(chatId) {
+            currentChatId = chatId;
+            const chat = chats[chatId];
+            
+            // Update active state in sidebar
+            document.querySelectorAll('.chat-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-chat-id="${chatId}"]`).classList.add('active');
+            
+            // Update header
+            const iconClass = chat.type === 'voice' ? 'fa-microphone' : 'fa-comment';
+            const iconBg = chat.type === 'voice' ? 'from-green-500 to-emerald-600' : 'from-indigo-500 to-purple-600';
+            
+            document.getElementById('currentChatIcon').className = `w-10 h-10 bg-gradient-to-br ${iconBg} rounded-full flex items-center justify-center shadow-md`;
+            document.getElementById('currentChatIcon').innerHTML = `<i class="fas ${iconClass} text-white text-lg"></i>`;
+            document.getElementById('currentChatTitle').textContent = chat.title;
+            document.getElementById('currentChatSubtitle').textContent = chat.subtitle;
+            
+            // Show/hide delete button
+            const deleteBtn = document.getElementById('deleteChatBtn');
+            if (chat.permanent) {
+                deleteBtn.classList.add('hidden');
+            } else {
+                deleteBtn.classList.remove('hidden');
+            }
+            
+            // Load chat messages
+            loadChatMessages(chatId);
+            
+            // Update stats
+            document.getElementById('activeChatType').textContent = chat.type === 'voice' ? 'Voice' : 'Text';
+        }
+        
+        function loadChatMessages(chatId) {
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = '';
+            
+            const chat = chats[chatId];
+            
+            if (chat.messages.length === 0) {
+                // Show welcome message
+                container.innerHTML = `
+                    <div class="flex justify-center py-12">
+                        <div class="text-center max-w-md">
+                            <div class="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                                <i class="fas fa-robot text-white text-4xl"></i>
+                            </div>
+                            <h2 class="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-3">Halo! Saya Irma</h2>
+                            <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Virtual assistant kamu yang siap membantu kapan saja. Ketik atau bicara untuk memulai percakapan!</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                chat.messages.forEach(msg => {
+                    addMessageToUI(msg.role, msg.text);
+                });
+            }
+        }
+        
+        function deleteCurrentChat() {
+            const chat = chats[currentChatId];
+            if (chat && !chat.permanent) {
+                if (confirm(`Delete "${chat.title}"?`)) {
+                    // Remove from chats object
+                    delete chats[currentChatId];
+                    
+                    // Remove from UI
+                    const chatItem = document.querySelector(`[data-chat-id="${currentChatId}"]`);
+                    if (chatItem) {
+                        chatItem.remove();
+                    }
+                    
+                    // Switch to voice chat
+                    switchChat('voice-realtime');
+                    updateStats();
+                }
+            }
+        }
+        
+        // Message Functions
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if (!message && !uploadedImage) return;
+            
+            // Add to current chat
+            if (message) {
+                chats[currentChatId].messages.push({
+                    role: 'user',
+                    text: message
+                });
+                addMessageToUI('user', message);
+            }
+            
+            input.value = '';
+            autoResize(input);
+            
+            // Send to backend
+            processCommand(message);
+        }
+        
+        function addMessageToUI(role, text) {
+            const container = document.getElementById('chatMessages');
+            
+            // Remove welcome message if exists
+            const welcome = container.querySelector('.text-center');
+            if (welcome) {
+                container.innerHTML = '';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            if (role === 'user') {
+                messageDiv.innerHTML = `
+                    <div class="max-w-md">
+                        <div class="message-user text-white px-5 py-3 rounded-2xl rounded-tr-sm shadow-md">
+                            <p class="text-sm leading-relaxed">${escapeHtml(text)}</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                messageDiv.innerHTML = `
+                    <div class="max-w-md">
+                        <div class="flex items-start space-x-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
+                                <i class="fas fa-robot text-white text-xs"></i>
+                            </div>
+                            <div class="message-assistant text-white px-5 py-3 rounded-2xl rounded-tl-sm shadow-md">
+                                <p class="text-sm leading-relaxed">${escapeHtml(text)}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+            
+            messageCounter++;
+            updateStats();
+        }
+        
+        async function processCommand(input) {
+            try {
+                showTypingIndicator();
+                
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ input: input })
+                });
+                
+                const data = await response.json();
+                hideTypingIndicator();
+                
+                if (data.success) {
+                    chats[currentChatId].messages.push({
+                        role: 'assistant',
+                        text: data.response
+                    });
+                    addMessageToUI('assistant', data.response);
+                } else {
+                    addMessageToUI('assistant', 'Maaf, terjadi kesalahan: ' + data.error);
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                addMessageToUI('assistant', 'Maaf, terjadi kesalahan koneksi.');
+            }
+        }
+        
+        function showTypingIndicator() {
+            const container = document.getElementById('chatMessages');
+            const indicator = document.createElement('div');
+            indicator.id = 'typingIndicator';
+            indicator.className = 'flex justify-start';
+            indicator.innerHTML = `
+                <div class="flex items-center space-x-2 bg-snow-100 dark:bg-dark-elevated px-4 py-2 rounded-2xl shadow-sm">
+                    <span class="typing-indicator"></span>
+                    <span class="typing-indicator"></span>
+                    <span class="typing-indicator"></span>
+                </div>
+            `;
+            container.appendChild(indicator);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function hideTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+        
+        // Language Mode
+        async function setLanguageMode(mode) {
+            languageMode = mode;
+            
+            document.getElementById('genZBtn').className = mode === 'gen-z' 
+                ? 'px-3 py-1 rounded-md bg-indigo-600 text-white text-sm font-medium transition-colors'
+                : 'px-3 py-1 rounded-md text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-bg text-sm font-medium transition-colors';
+            
+            document.getElementById('formalBtn').className = mode === 'formal'
+                ? 'px-3 py-1 rounded-md bg-indigo-600 text-white text-sm font-medium transition-colors'
+                : 'px-3 py-1 rounded-md text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-bg text-sm font-medium transition-colors';
+            
+            document.getElementById('currentMode').textContent = mode === 'gen-z' ? 'Gen-Z' : 'Formal';
+            
+            try {
+                await fetch('/api/language-mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ mode: mode })
+                });
+            } catch (error) {
+                console.error('Error setting language mode:', error);
+            }
+        }
+        
+        // Image Handling
+        function handleImageSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('previewImg').src = e.target.result;
+                    document.getElementById('imagePreview').classList.remove('hidden');
+                    uploadedImage = file;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        function clearImage() {
+            document.getElementById('imagePreview').classList.add('hidden');
+            document.getElementById('imageInput').value = '';
+            uploadedImage = null;
+        }
+        
+        // Quick Actions
+        function quickAction(text) {
+            document.getElementById('userInput').value = text;
+            sendMessage();
+        }
+        
+        // Voice Input
+        function toggleVoice() {
+            alert('Voice recognition feature coming soon! Untuk sekarang, silakan ketik pesan Anda.');
+        }
+        
+        // History
+        function showHistory() {
+            alert('Conversation history feature. Total messages in current chat: ' + chats[currentChatId].messages.length);
+        }
+        
+        // Utilities
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+        
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        }
+        
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+        
+        // Stats Update
+        function updateStats() {
+            document.getElementById('totalMessages').textContent = messageCounter;
+            document.getElementById('totalChats').textContent = Object.keys(chats).length;
+            
+            const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('sessionTime').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // System Stats
+        async function updateSystemStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                document.getElementById('cpuUsage').textContent = data.cpu_percent.toFixed(1) + '%';
+                document.getElementById('cpuBar').style.width = data.cpu_percent + '%';
+                
+                document.getElementById('memoryUsage').textContent = data.memory_percent.toFixed(1) + '%';
+                document.getElementById('memoryBar').style.width = data.memory_percent + '%';
+            } catch (error) {
+                console.error('Error fetching system stats:', error);
+            }
+        }
+        
+        // Initialize
+        setInterval(updateStats, 1000);
+        setInterval(updateSystemStats, 2000);
+        updateSystemStats();
+    </script>
+
+</body>
+</html>
