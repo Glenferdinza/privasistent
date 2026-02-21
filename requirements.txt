@@ -3,6 +3,12 @@ vosk==0.3.45
 pyaudio==0.2.14
 pyttsx3==2.90
 
+# OpenAI Whisper - Excellent Indonesian support (OPTIONAL)
+openai-whisper==20231117
+# Dependencies for Whisper
+torch==2.1.0
+torchaudio==2.1.0
+
 # Web Framework & GUI
 flask==3.0.0
 flask-cors==4.0.0

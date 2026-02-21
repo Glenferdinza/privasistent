@@ -1,5 +1,6 @@
 """
 Speech Recognition Module menggunakan Vosk
+Multi-language support dengan dynamic switching dan lazy loading
 Offline, akurat, dan memory efficient
 """
 
@@ -10,46 +11,50 @@ import gc
 import logging
 from typing import Optional, Callable
 import threading
+from .voice_language_manager import get_language_manager
 
 logger = logging.getLogger(__name__)
 
 
 class SpeechRecognizer:
-    """Speech recognizer dengan Vosk untuk akurasi tinggi"""
+    """
+    Speech recognizer dengan Vosk dan multi-language support
+    Menggunakan VoiceLanguageManager untuk efficient memory management
+    """
     
-    def __init__(self, model_path: str, sample_rate: int = 16000):
-        self.model_path = model_path
+    def __init__(self, default_language: str = 'id', sample_rate: int = 16000):
+        """
+        Args:
+            default_language: Default language code (id/en/ru/ms)
+            sample_rate: Audio sample rate
+        """
         self.sample_rate = sample_rate
-        self._model = None
-        self._recognizer = None
         self._audio = None
         self._stream = None
         
-    def _load_model(self):
-        """Load Vosk model"""
-        if self._model is None:
-            try:
-                logger.info(f"Loading Vosk model from {self.model_path}")
-                self._model = vosk.Model(str(self.model_path))
-                self._recognizer = vosk.KaldiRecognizer(self._model, self.sample_rate)
-                self._recognizer.SetWords(True)
-                logger.info("Vosk model loaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to load Vosk model: {e}")
-                raise
+        # Get language manager instance
+        self.lang_manager = get_language_manager(default_lang=default_language)
+        
+        # Load default language on startup
+        logger.info(f"Initializing speech recognizer with language: {default_language}")
+        if not self.lang_manager.is_model_loaded():
+            self.lang_manager.load_language(default_language)
     
     def _init_audio_stream(self):
         """Inisialisasi audio stream"""
         try:
-            self._audio = pyaudio.PyAudio()
-            self._stream = self._audio.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=self.sample_rate,
-                input=True,
-                frames_per_buffer=4096
-            )
-            logger.info("Audio stream initialized")
+            if self._audio is None:
+                self._audio = pyaudio.PyAudio()
+            
+            if self._stream is None:
+                self._stream = self._audio.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=self.sample_rate,
+                    input=True,
+                    frames_per_buffer=4096
+                )
+                logger.info("Audio stream initialized")
         except Exception as e:
             logger.error(f"Failed to initialize audio stream: {e}")
             raise
@@ -57,6 +62,7 @@ class SpeechRecognizer:
     def listen_once(self, timeout: int = 10) -> Optional[str]:
         """
         Dengarkan sekali dan return transcript
+        Otomatis detect language switch command
         
         Args:
             timeout: Waktu maksimal listening dalam detik
@@ -65,10 +71,14 @@ class SpeechRecognizer:
             Transcript text atau None
         """
         try:
-            self._load_model()
             self._init_audio_stream()
             
-            logger.info("Listening...")
+            recognizer = self.lang_manager.get_recognizer()
+            if recognizer is None:
+                logger.error("No recognizer available")
+                return None
+            
+            logger.info(f"Listening... (language: {self.lang_manager.get_current_language_name()})")
             frames_read = 0
             max_frames = timeout * self.sample_rate // 4096
             
@@ -76,20 +86,43 @@ class SpeechRecognizer:
                 data = self._stream.read(4096, exception_on_overflow=False)
                 frames_read += 1
                 
-                if self._recognizer.AcceptWaveform(data):
-                    result = json.loads(self._recognizer.Result())
+                if recognizer.AcceptWaveform(data):
+                    result = json.loads(recognizer.Result())
                     text = result.get('text', '').strip()
                     
                     if text:
                         logger.info(f"Recognized: {text}")
+                        
+                        # Check for language switch command
+                        target_lang = self.lang_manager.detect_language_switch_command(text)
+                        if target_lang:
+                            # Switch language
+                            success, message = self.lang_manager.switch_language(target_lang)
+                            if success:
+                                # Return switch confirmation message
+                                return f"__LANG_SWITCH__:{message}"
+                            else:
+                                logger.error(f"Language switch failed: {message}")
+                        
                         return text
+                
+                # Cleanup buffer
+                del data
             
             # Jika timeout, ambil partial result
-            result = json.loads(self._recognizer.FinalResult())
+            result = json.loads(recognizer.FinalResult())
             text = result.get('text', '').strip()
             
             if text:
                 logger.info(f"Final result: {text}")
+                
+                # Check language switch in final result too
+                target_lang = self.lang_manager.detect_language_switch_command(text)
+                if target_lang:
+                    success, message = self.lang_manager.switch_language(target_lang)
+                    if success:
+                        return f"__LANG_SWITCH__:{message}"
+                
                 return text
             
             return None
@@ -97,39 +130,56 @@ class SpeechRecognizer:
         except Exception as e:
             logger.error(f"Speech recognition error: {e}")
             return None
-            
+        
         finally:
-            self._cleanup()
+            gc.collect()
     
     def listen_continuous(self, callback: Callable[[str], bool], 
-                         energy_threshold: int = 300) -> None:
+                         check_language_switch: bool = True) -> None:
         """
         Listening mode kontinyu dengan callback
+        Otomatis handle language switching
         
         Args:
             callback: Function yang dipanggil setiap ada speech (return True untuk stop)
-            energy_threshold: Threshold untuk deteksi speech
+            check_language_switch: Auto-detect dan handle language switch commands
         """
         try:
-            self._load_model()
             self._init_audio_stream()
             
             logger.info("Continuous listening mode started")
+            logger.info(f"Current language: {self.lang_manager.get_current_language_name()}")
             
             while True:
+                recognizer = self.lang_manager.get_recognizer()
+                if recognizer is None:
+                    logger.error("No recognizer available, stopping")
+                    break
+                
                 data = self._stream.read(4096, exception_on_overflow=False)
                 
-                if self._recognizer.AcceptWaveform(data):
-                    result = json.loads(self._recognizer.Result())
+                if recognizer.AcceptWaveform(data):
+                    result = json.loads(recognizer.Result())
                     text = result.get('text', '').strip()
                     
                     if text:
                         logger.info(f"Detected: {text}")
-                        # Cleanup setelah setiap detection
+                        
+                        # Cleanup buffer
                         del data
                         gc.collect()
                         
-                        # Call callback, jika return True maka stop
+                        # Check for language switch
+                        if check_language_switch:
+                            target_lang = self.lang_manager.detect_language_switch_command(text)
+                            if target_lang:
+                                success, message = self.lang_manager.switch_language(target_lang)
+                                logger.info(f"Language switched: {message}")
+                                # Continue listening in new language
+                                continue
+                        
+                        # Call callback dengan text
+                        # Return True dari callback akan stop listening
                         if callback(text):
                             break
                 else:
@@ -141,10 +191,32 @@ class SpeechRecognizer:
         except Exception as e:
             logger.error(f"Continuous listening error: {e}")
         finally:
-            self._cleanup()
+            self._cleanup_stream()
     
-    def _cleanup(self):
-        """Cleanup resources"""
+    def switch_language(self, language_code: str) -> bool:
+        """
+        Manually switch language
+        
+        Args:
+            language_code: Target language (id/en/ru/ms)
+            
+        Returns:
+            True if successful
+        """
+        success, message = self.lang_manager.switch_language(language_code)
+        logger.info(message)
+        return success
+    
+    def get_current_language(self) -> str:
+        """Get current language code"""
+        return self.lang_manager.current_language
+    
+    def get_available_languages(self):
+        """Get available languages"""
+        return self.lang_manager.get_available_languages()
+    
+    def _cleanup_stream(self):
+        """Cleanup audio stream only (keep model loaded)"""
         try:
             if self._stream:
                 self._stream.stop_stream()
@@ -155,32 +227,24 @@ class SpeechRecognizer:
                 self._audio.terminate()
                 self._audio = None
             
-            # Keep model loaded untuk reuse (optional)
-            # Uncomment jika ingin full cleanup
-            # if self._recognizer:
-            #     del self._recognizer
-            #     self._recognizer = None
-            # if self._model:
-            #     del self._model
-            #     self._model = None
-            
             gc.collect()
-            logger.info("Audio resources cleaned up")
+            logger.info("Audio stream cleaned up")
             
         except Exception as e:
-            logger.warning(f"Cleanup warning: {e}")
+            logger.warning(f"Stream cleanup warning: {e}")
+    
+    def cleanup(self):
+        """Full cleanup including language manager"""
+        self._cleanup_stream()
+        self.lang_manager.cleanup()
     
     def __del__(self):
         """Destructor"""
-        self._cleanup()
-        if self._recognizer:
-            del self._recognizer
-        if self._model:
-            del self._model
+        self._cleanup_stream()
 
 
 class STTManager:
-    """Singleton manager untuk Speech Recognition"""
+    """Singleton manager untuk Speech Recognition dengan multi-language support"""
     
     _instance = None
     _lock = threading.Lock()
@@ -194,8 +258,15 @@ class STTManager:
     
     def __init__(self):
         if not hasattr(self, 'recognizer'):
-            from config import VOSK_MODEL_PATH
-            self.recognizer = SpeechRecognizer(str(VOSK_MODEL_PATH))
+            # Get default language from config
+            try:
+                from config import DEFAULT_VOICE_LANGUAGE
+                default_lang = DEFAULT_VOICE_LANGUAGE
+            except ImportError:
+                default_lang = 'id'  # Fallback to Indonesian
+            
+            self.recognizer = SpeechRecognizer(default_language=default_lang)
+            logger.info(f"STTManager initialized with language: {default_lang}")
     
     def listen(self, timeout: int = 10) -> Optional[str]:
         """Listen once wrapper"""
@@ -204,3 +275,15 @@ class STTManager:
     def listen_continuous(self, callback: Callable[[str], bool]) -> None:
         """Continuous listening wrapper"""
         return self.recognizer.listen_continuous(callback)
+    
+    def switch_language(self, language_code: str) -> bool:
+        """Switch language wrapper"""
+        return self.recognizer.switch_language(language_code)
+    
+    def get_current_language(self) -> str:
+        """Get current language"""
+        return self.recognizer.get_current_language()
+    
+    def get_available_languages(self):
+        """Get available languages"""
+        return self.recognizer.get_available_languages()

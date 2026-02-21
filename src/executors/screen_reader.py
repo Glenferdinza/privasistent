@@ -15,10 +15,11 @@ logger = logging.getLogger(__name__)
 class ScreenReader:
     """Screen reader menggunakan OCR"""
     
-    def __init__(self, ocr_language: str = "ind+eng"):
+    def __init__(self, ocr_language: str = "eng+ind+msa+rus"):
         """
         Args:
             ocr_language: Bahasa untuk OCR (Tesseract format)
+                         Default: eng+ind+msa+rus (English, Indonesian, Malay, Russian)
         """
         self.ocr_language = ocr_language
         self._pytesseract = None

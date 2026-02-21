@@ -70,7 +70,7 @@ ALLOWED_DOMAINS_STR = os.getenv("ALLOWED_DOMAINS", "wikipedia.org,google.com")
 ALLOWED_DOMAINS = [domain.strip() for domain in ALLOWED_DOMAINS_STR.split(",")]
 
 # Screen Reading
-OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "ind+eng")
+OCR_LANGUAGE = os.getenv("OCR_LANGUAGE", "eng+ind+msa+rus")
 SCREEN_CAPTURE_DELAY = int(os.getenv("SCREEN_CAPTURE_DELAY", 1))
 
 # Listening Settings
@@ -79,8 +79,49 @@ PAUSE_THRESHOLD = float(os.getenv("PAUSE_THRESHOLD", 0.8))
 PHRASE_TIME_LIMIT = int(os.getenv("PHRASE_TIME_LIMIT", 10))
 AMBIENT_DURATION = int(os.getenv("AMBIENT_DURATION", 1))
 
-# Vosk Model Path
-VOSK_MODEL_PATH = MODELS_DIR / "vosk-model-small-id-0.22"
+# Multi-Language Voice Settings
+# === VOSK ENGINE ===
+# NOTE: Indonesian & Malay models tidak tersedia di Vosk
+# English model dapat recognize Indonesian text dengan akurasi ~60-70%
+DEFAULT_VOICE_LANGUAGE = os.getenv("DEFAULT_VOICE_LANGUAGE", "en")  # en/ru (only available)
+AVAILABLE_LANGUAGES = ['en', 'ru']  # English (universal), Russian
+
+# Vosk Model Paths (ONLY models that actually exist)
+VOSK_MODELS = {
+    'en': MODELS_DIR / "vosk-model-small-en-us-0.15",  # English (can recognize Indonesian)
+    'ru': MODELS_DIR / "vosk-model-small-ru-0.22",  # Russian
+}
+
+# Legacy support - default model path
+VOSK_MODEL_PATH = VOSK_MODELS.get(DEFAULT_VOICE_LANGUAGE, MODELS_DIR / "vosk-model-small-en-us-0.15")
+
+# === WHISPER ENGINE (BEST for Indonesian!) ===
+# OpenAI Whisper: Free, open source, offline, multi-language
+# Excellent Indonesian support (85-95% accuracy)
+# Install: pip install openai-whisper torch torchaudio
+VOICE_ENGINE = os.getenv("VOICE_ENGINE", "hybrid")  # vosk / whisper / hybrid
+DEFAULT_WHISPER_LANGUAGE = os.getenv("DEFAULT_WHISPER_LANGUAGE", "id")  # id/ms/en/ru/auto
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # tiny/base/small/medium/large
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  # cpu/cuda
+WHISPER_FP16 = os.getenv("WHISPER_FP16", "false").lower() == "true"  # FP16 precision (GPU only)
+
+# Whisper model sizes
+WHISPER_MODEL_INFO = {
+    'tiny': {'size': '75MB', 'accuracy': '70-75%', 'speed': 'Very fast'},
+    'base': {'size': '145MB', 'accuracy': '75-80%', 'speed': 'Fast'},
+    'small': {'size': '488MB', 'accuracy': '85-90%', 'speed': 'Medium'},  # RECOMMENDED
+    'medium': {'size': '1.5GB', 'accuracy': '90-95%', 'speed': 'Slow'},
+    'large': {'size': '3GB', 'accuracy': '95%+', 'speed': 'Very slow'},
+}
+
+# Whisper supported languages
+WHISPER_LANGUAGES = {
+    'id': 'Indonesian',
+    'ms': 'Malay', 
+    'en': 'English',
+    'ru': 'Russian',
+    'auto': 'Auto-detect'
+}
 
 # Audit Log Path
 AUDIT_LOG_PATH = LOGS_DIR / "security_audit.log"
