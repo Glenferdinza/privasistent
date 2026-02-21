@@ -69,7 +69,6 @@ GUI_V2_GUIDE.md
 GUI_V2_CHANGELOG.md
 *.md
 !README.md
-WHISPER_SETUP.md
 
 # Test
 .pytest_cache/
