@@ -127,7 +127,7 @@ Kalo belum kedetect, tambahkan path Tesseract manual di `src/executors/screen_re
 
 ## License
 
-Project ini pake lisensi yang sama dengan [privasistent](LICENSE.txt). Check file LICENSE di repo tersebut untuk detail lengkap.
+Project ini menggunakan lisensi dari [GPLv3](LICENSE.txt). Check file LICENSE di repo tersebut untuk detail lengkap.
 
 ## Catatan
 
